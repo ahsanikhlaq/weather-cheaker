@@ -1,0 +1,13 @@
+{
+  "name": "weather-api",
+  "version": "1.0.0",
+  "description": "Free weather API by zip code — no API key required",
+  "main": "api/weather.js",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}
