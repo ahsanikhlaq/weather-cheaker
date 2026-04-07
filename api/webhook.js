@@ -8,124 +8,56 @@ export default async function handler(req, res) {
   const { zip, country = "US" } = req.query;
 
   if (!zip) {
-    return res.status(400).json({
-      error: "Missing zip parameter",
-      example: "/api/weather?zip=10001&country=US",
-    });
+    return res.status(400).send("Missing zip parameter");
   }
 
   try {
-    // Step 1: Convert zip code to lat/lon using Nominatim (free, no key)
-    const geoUrl = `https://nominatim.openstreetmap.org/search?postalcode=${zip}&country=${country}&format=json&limit=1`;
+    // Step 1: Convert zip to lat/lon using Zippopotam.us (free, no key, US focused)
+    const geoRes = await fetch(
+      `https://api.zippopotam.us/${country}/${zip}`
+    );
 
-    const geoRes = await fetch(geoUrl, {
-      headers: {
-        "User-Agent": "WeatherApp/1.0 (weather-lookup-tool)",
-        Accept: "application/json",
-      },
-    });
-
-    const geoData = await geoRes.json();
-
-    if (!geoData || geoData.length === 0) {
-      return res.status(404).json({
-        error: "Zip code not found",
-        zip,
-        country,
-      });
+    if (!geoRes.ok) {
+      return res.status(404).send("Normal"); // fallback tag if zip not found
     }
 
-    const { lat, lon, display_name } = geoData[0];
+    const geoData = await geoRes.json();
+    const lat = geoData.places[0].latitude;
+    const lon = geoData.places[0].longitude;
 
-    // Step 2: Get weather from Open-Meteo (free, no key)
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=relativehumidity_2m,apparent_temperature,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=auto&forecast_days=5`;
+    // Step 2: Get 5-day forecast from Open-Meteo (free, no key)
+    const weatherRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5&temperature_unit=fahrenheit`
+    );
 
-    const weatherRes = await fetch(weatherUrl);
     const weatherData = await weatherRes.json();
-
-    const cw = weatherData.current_weather;
     const daily = weatherData.daily;
 
-    // Map WMO weather codes to human-readable descriptions
-    const weatherDescriptions = {
-      0: "Clear sky",
-      1: "Mainly clear",
-      2: "Partly cloudy",
-      3: "Overcast",
-      45: "Foggy",
-      48: "Icy fog",
-      51: "Light drizzle",
-      53: "Moderate drizzle",
-      55: "Heavy drizzle",
-      61: "Slight rain",
-      63: "Moderate rain",
-      65: "Heavy rain",
-      71: "Slight snow",
-      73: "Moderate snow",
-      75: "Heavy snow",
-      77: "Snow grains",
-      80: "Slight showers",
-      81: "Moderate showers",
-      82: "Violent showers",
-      85: "Slight snow showers",
-      86: "Heavy snow showers",
-      95: "Thunderstorm",
-      96: "Thunderstorm with hail",
-      99: "Thunderstorm with heavy hail",
-    };
+    // Step 3: Calculate 5-day average temperature in °F
+    const allTemps = [
+      ...daily.temperature_2m_max,
+      ...daily.temperature_2m_min,
+    ];
+    const avgTemp =
+      allTemps.reduce((sum, t) => sum + t, 0) / allTemps.length;
 
-    const getDescription = (code) =>
-      weatherDescriptions[code] || `Weather code ${code}`;
+    // Step 4: Determine tag based on average temperature
+    let tag;
+    if (avgTemp < 32) {
+      tag = "Extreme-Cold";
+    } else if (avgTemp < 50) {
+      tag = "Cold-Weather";
+    } else if (avgTemp <= 80) {
+      tag = "Normal";
+    } else {
+      tag = "Heat-Warning";
+    }
 
-    // Get current hour index for humidity/feels_like
-    const currentHour = new Date().getUTCHours();
-    const humidity =
-      weatherData.hourly?.relativehumidity_2m?.[currentHour] || null;
-    const feelsLike =
-      weatherData.hourly?.apparent_temperature?.[currentHour] || null;
-    const precipProb =
-      weatherData.hourly?.precipitation_probability?.[currentHour] || null;
+    // Step 5: Return plain text tag
+    return res.status(200).send(tag);
 
-    // Build 5-day forecast
-    const forecast = daily.time.map((date, i) => ({
-      date,
-      condition: getDescription(daily.weathercode[i]),
-      weatherCode: daily.weathercode[i],
-      tempMax: daily.temperature_2m_max[i],
-      tempMin: daily.temperature_2m_min[i],
-      precipitation: daily.precipitation_sum[i],
-    }));
-
-    // Final response
-    return res.status(200).json({
-      zip,
-      country: country.toUpperCase(),
-      location: display_name,
-      coordinates: { lat: parseFloat(lat), lon: parseFloat(lon) },
-      current: {
-        temperature: cw.temperature,
-        feelsLike,
-        humidity,
-        windspeed: cw.windspeed,
-        windDirection: cw.winddirection,
-        condition: getDescription(cw.weathercode),
-        weatherCode: cw.weathercode,
-        isDay: cw.is_day === 1,
-        precipitationProbability: precipProb,
-        time: cw.time,
-        units: {
-          temperature: "°C",
-          windspeed: "km/h",
-          precipitation: "mm",
-        },
-      },
-      forecast,
-      source: "Open-Meteo + OpenStreetMap Nominatim (no API key required)",
-    });
   } catch (error) {
-    return res.status(500).json({
-      error: "Failed to fetch weather data",
-      message: error.message,
-    });
+    // On any error return Normal as safe fallback
+    return res.status(200).send("Normal");
   }
 }
