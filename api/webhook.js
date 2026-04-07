@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     );
 
     if (!geoRes.ok) {
-      return res.status(404).send("Normal"); // fallback tag if zip not found
+      return res.status(200).send("Normal"); // fallback tag if zip not found
     }
 
     const geoData = await geoRes.json();
@@ -33,27 +33,29 @@ export default async function handler(req, res) {
     const weatherData = await weatherRes.json();
     const daily = weatherData.daily;
 
-    // Step 3: Calculate 5-day average temperature in °F
-    const allTemps = [
-      ...daily.temperature_2m_max,
-      ...daily.temperature_2m_min,
-    ];
-    const avgTemp =
-      allTemps.reduce((sum, t) => sum + t, 0) / allTemps.length;
+    // Step 3: Calculate 5-day average using MAX temps only
+    // (daily highs determine risk for products, not lows)
+    const maxTemps = daily.temperature_2m_max;
+    const avgMaxTemp =
+      maxTemps.reduce((sum, t) => sum + t, 0) / maxTemps.length;
 
-    // Step 4: Determine tag based on average temperature
+    // Step 4: Determine tag based on average HIGH temperature
+    // Below 32°F  → Extreme-Cold (freezing risk)
+    // 32°F - 49°F → Cold-Weather (insulation needed)
+    // 50°F - 79°F → Normal (standard shipping)
+    // 80°F+       → Heat-Warning (melting risk)
     let tag;
-    if (avgTemp < 32) {
+    if (avgMaxTemp < 32) {
       tag = "Extreme-Cold";
-    } else if (avgTemp < 50) {
+    } else if (avgMaxTemp < 50) {
       tag = "Cold-Weather";
-    } else if (avgTemp <= 80) {
+    } else if (avgMaxTemp < 80) {
       tag = "Normal";
     } else {
       tag = "Heat-Warning";
     }
 
-    // Step 5: Return plain text tag
+    // Step 5: Return plain text tag (Shopify Flow reads this directly)
     return res.status(200).send(tag);
 
   } catch (error) {
