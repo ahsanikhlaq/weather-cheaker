@@ -26,19 +26,19 @@ export default async function handler(req, res) {
     const weatherData = await weatherRes.json();
     const maxTemps = weatherData.daily.temperature_2m_max;
 
-    // Step 3: Count how many days fall into each category
-    const extremeColdDays = maxTemps.filter((t) => t < 32).length;
-    const coldDays        = maxTemps.filter((t) => t >= 32 && t < 50).length;
-    const heatDays        = maxTemps.filter((t) => t >= 80).length;
+    // Step 3: Count days in each risk category
+    // Cold High Risk  → below 30°F
+    // Heat High Risk  → above 90°F
+    // Normal          → 30°F to 90°F
+    const coldDays = maxTemps.filter((t) => t < 30).length;
+    const heatDays = maxTemps.filter((t) => t > 90).length;
 
-    // Step 4: Assign tag — extreme conditions trigger at 2+ days, heat at 3+
+    // Step 4: 2+ days = Cold-High-Risk, 3+ days = Heat-High-Risk, else Normal
     let tag;
-    if (extremeColdDays >= 2) {
-      tag = "Extreme-Cold";
+    if (coldDays >= 2) {
+      tag = "Cold/High-Risk";
     } else if (heatDays >= 3) {
-      tag = "Heat-Warning";
-    } else if (coldDays >= 2) {
-      tag = "Cold-Weather";
+      tag = "Heat/High-Risk";
     } else {
       tag = "Normal";
     }
