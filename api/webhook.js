@@ -117,8 +117,8 @@ export default async function handler(req, res) {
     const allTemps = weatherData.daily.temperature_2m_max;
 
     // ─── Step 3: Slice correct 5-day window ───────────────────────────────────
-     //
-     // Scenario A example:
+    //
+    // Scenario A example:
     //   ship_date = April 30 (10 days away)
     //   forecastDays = 11, windowStartOffset = 6
     //   allTemps = [Apr13, Apr14, Apr15, Apr16, Apr17, Apr18, Apr19, Apr20... Apr30]
